@@ -12,14 +12,19 @@ data BattleState : Type where
   
   Ready : BattleState
   Done : BattleState
+  ReadError : BattleState
   
 data BattleCmd : (ty : Type) -> BattleState -> (ty -> BattleState) -> Type where
   Start : BattleCmd () Dead (const (NotDead 10))
   Die : BattleCmd () (NotDead 0) (const Dead)
   Stupid : BattleCmd () (NotDead (S k)) (const (NotDead k))
   
-  ReadState : BattleCmd BattleState Ready (\x => x) -- moves to the loaded state
+  ReadState : BattleCmd (Maybe BattleState) Ready
+    (\res => case res of
+                  Just loadedState => loadedState
+                  Nothing => ReadError)
   WriteState : BattleCmd () inState (const Done)
+  GiveUp : BattleCmd () ReadError (const Done)
   
   Log : String -> BattleCmd () state (const state)
   
@@ -36,15 +41,24 @@ log : String -> JS_IO ()
 log = putStrLn'
 
 newState : JS_IO ()
-newState = foreign FFI_JS "window.badboy = { value: 12 }" (JS_IO ())
+newState = foreign FFI_JS "window.badboy = { state: 'DEAD' }" (JS_IO ())
 
-readState : JS_IO BattleState
-readState = do i <- foreign FFI_JS "(function () { return window.badboy.value; } )()" (JS_IO Int)
-               pure (NotDead (cast i))
+readState : JS_IO (Maybe BattleState)
+readState = do stateStr <- foreign FFI_JS "window.badboy.state" (JS_IO String)
+               case stateStr of
+                 "DEAD" => pure (Just Dead)
+                 "NOTDEAD" => do health <- foreign FFI_JS "window.badboy.health" (JS_IO Int)
+                                 pure (Just (NotDead (cast health)))
+                 _ => pure Nothing
                
+writeStateStr : String -> JS_IO ()
+writeStateStr = foreign FFI_JS "window.badboy.state = %0" (String -> JS_IO ())
+
 writeState : BattleState -> JS_IO ()
+writeState Dead = writeStateStr "DEAD"
 writeState (NotDead health) =
-  foreign FFI_JS "window.badboy.value = %0" (Int -> JS_IO ()) (toIntNat health)
+  do writeStateStr "NOTDEAD"
+     foreign FFI_JS "window.badboy.health = %0" (Int -> JS_IO()) (toIntNat health)
 writeState _ = log "nobody knows the trouble I've seen" -- this is fucked up
 
 partial onClick : String -> JS_IO () -> JS_IO ()
@@ -56,34 +70,40 @@ onClick selector callback =
 
 --------------------------------------------------------------------------------
           
-testCmd : BattleCmd () Ready (const Done)
-testCmd = do state <- ReadState
-             case state of
-               NotDead (S health) => do Stupid
-                                        WriteState
-               _ => WriteState
-
 runCmd : BattleCmd () Ready (const Done) -> JS_IO ()
 runCmd = runCmd'
   where
     runCmd' : BattleCmd res inState outState_fn -> JS_IO res
     runCmd' Start = do log "starting..."
     runCmd' Die = log "you died"
-    runCmd' Stupid = log "you did something stupid"
+    runCmd' Stupid {outState_fn = const (NotDead health)} =
+      log ("you did something stupid, health: " ++ show health)
     runCmd' ReadState = readState
     runCmd' WriteState {inState} = writeState inState
+    runCmd' GiveUp = log "something went wrong reading the state"
     runCmd' (Log msg) = log msg
     runCmd' (Pure res) = pure res
     runCmd' (x >>= f) = do x' <- runCmd' x
                            runCmd' (f x')
 
 doStupid : BattleCmd () Ready (const Done)
-doStupid = do state <- ReadState
+doStupid = do Just state <- ReadState | Nothing => GiveUp 
               case state of
                 NotDead (S health) => do Stupid
-                                         WriteState
+                                         case health of
+                                           Z => do Die
+                                                   WriteState
+                                           _ => WriteState
                 _ => WriteState
+                
+doStart : BattleCmd () Ready (const Done)
+doStart = do Just state <- ReadState | Nothing => GiveUp
+             case state of
+               Dead => do Start
+                          WriteState
+               _ => WriteState
 
 partial main : JS_IO ()
 main = do newState 
-          onClick "#dangermouse" (runCmd doStupid)
+          onClick "#start" (runCmd doStart)
+          onClick "#stupid" (runCmd doStupid)
