@@ -2,11 +2,25 @@
 <html>
 <head>
   <meta charset="utf-8" />
+  <link rel="stylesheet" href="https://unpkg.com/onsenui/css/onsenui.css">
+  <link rel="stylesheet" href="https://unpkg.com/onsenui/css/onsen-css-components.min.css">
+  <script src="https://unpkg.com/onsenui/js/onsenui.min.js"></script>
+  <script type="text/javascript" src="helpers.js"></script>
+  <script type="text/javascript" src="battle.js"></script>
 </head>
 <body>
-  <p id="status"></p>
-  <button id="start">start</button>
-  <button id="stupid">stupid</button>
-  <script type="text/javascript" src="battle.js"></script>
+  <ons-page>
+    <ons-toolbar>
+      <div class="left" id="status"></div>
+    </ons-toolbar>
+    
+    <ons-list id="log"></ons-list>
+    
+    <ons-bottom-toolbar>
+      <ons-button id="kick">Kick</ons-button>
+      <ons-button id="punch">Punch</ons-button>
+      <ons-button id="magic">Magic</ons-button>
+    </ons-bottom-toolbar>
+  </ons-page>  
 </body>
 </html>
