@@ -6,6 +6,8 @@ It accompanies this blog post (add link once published).
 
 The game is a normal Idris state machine, with some extra jiggery-pokery to get persistent state working with JavaScript event listeners.
 
+Works with Idris 1.2.0.
+
 ## Running
 
 Compile with:
