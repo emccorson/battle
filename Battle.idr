@@ -73,21 +73,21 @@ data BattleCmd : (ty : Type) -> BattleState -> (ty -> BattleState) -> Type where
 --------------------------------------------------------------------------------
 
 newState : JS_IO ()
-newState = foreign FFI_JS "helpers.newState()" (JS_IO ())
+newState = foreign FFI_JS "gameState.newState()" (JS_IO ())
 
 readState : JS_IO (Maybe (a : BattleState ** Writable a))
-readState = do stateStr <- foreign FFI_JS "helpers.readState()" (JS_IO String)
+readState = do stateStr <- foreign FFI_JS "gameState.readState()" (JS_IO String)
                case stateStr of
                  "DEAD" => pure (Just (Dead ** WDead))
                  "WON" => pure (Just (Won ** WWon))
                  "SAFE" => pure (Just (Safe ** WSafe))
-                 "NOTDEAD" => do health <- foreign FFI_JS "helpers.readHealth()" (JS_IO Int)
-                                 enemy <- foreign FFI_JS "helpers.readEnemy()" (JS_IO Int)
+                 "NOTDEAD" => do health <- foreign FFI_JS "gameState.readHealth()" (JS_IO Int)
+                                 enemy <- foreign FFI_JS "gameState.readEnemy()" (JS_IO Int)
                                  pure (Just (NotDead (cast health) (cast enemy) ** WNotDead))
                  _ => pure Nothing
                
 writeStateStr : String -> JS_IO ()
-writeStateStr = foreign FFI_JS "helpers.writeStateStr(%0)" (String -> JS_IO ())
+writeStateStr = foreign FFI_JS "gameState.writeStateStr(%0)" (String -> JS_IO ())
 
 writeState : Writable state -> JS_IO ()
 writeState w {state = Dead} = writeStateStr "DEAD"
@@ -95,8 +95,8 @@ writeState w {state = Won} = writeStateStr "WON"
 writeState w {state = Safe} = writeStateStr "SAFE"
 writeState w {state = (NotDead health enemy)} =
   do writeStateStr "NOTDEAD"
-     foreign FFI_JS "helpers.writeHealth(%0)" (Int -> JS_IO()) (toIntNat health)
-     foreign FFI_JS "helpers.writeEnemy(%0)" (Int -> JS_IO()) (toIntNat enemy)
+     foreign FFI_JS "gameState.writeHealth(%0)" (Int -> JS_IO()) (toIntNat health)
+     foreign FFI_JS "gameState.writeEnemy(%0)" (Int -> JS_IO()) (toIntNat enemy)
 
 partial onClick : String -> JS_IO () -> JS_IO ()
 onClick selector callback =
@@ -112,7 +112,6 @@ onInit callback =
     ((JsFn (() -> JS_IO ())) -> JS_IO ())
     (MkJsFn (\_ => callback))
     
--- THIS IS HORRRRIBLE
 enemyResponse : JS_IO EnemyResponse
 enemyResponse = 
   do i <- foreign FFI_JS "enemyResponse()" (JS_IO Int)
