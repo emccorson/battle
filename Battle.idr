@@ -72,84 +72,83 @@ data BattleCmd : (ty : Type) -> BattleState -> (ty -> BattleState) -> Type where
 -- foreign stuff
 --------------------------------------------------------------------------------
 
-log : String -> JS_IO ()
-log = putStrLn'
-
 newState : JS_IO ()
-newState = foreign FFI_JS "window.badboy = { state: 'SAFE' }" (JS_IO ())
+newState = foreign FFI_JS "helpers.newState()" (JS_IO ())
 
 readState : JS_IO (Maybe (a : BattleState ** Writable a))
-readState = do stateStr <- foreign FFI_JS "window.badboy.state" (JS_IO String)
+readState = do stateStr <- foreign FFI_JS "helpers.readState()" (JS_IO String)
                case stateStr of
                  "DEAD" => pure (Just (Dead ** WDead))
                  "WON" => pure (Just (Won ** WWon))
                  "SAFE" => pure (Just (Safe ** WSafe))
-                 "NOTDEAD" => do health <- foreign FFI_JS "window.badboy.health" (JS_IO Int)
-                                 enemy <- foreign FFI_JS "window.badboy.enemy" (JS_IO Int)
+                 "NOTDEAD" => do health <- foreign FFI_JS "helpers.readHealth()" (JS_IO Int)
+                                 enemy <- foreign FFI_JS "helpers.readEnemy()" (JS_IO Int)
                                  pure (Just (NotDead (cast health) (cast enemy) ** WNotDead))
                  _ => pure Nothing
                
 writeStateStr : String -> JS_IO ()
-writeStateStr = foreign FFI_JS "window.badboy.state = %0" (String -> JS_IO ())
+writeStateStr = foreign FFI_JS "helpers.writeStateStr(%0)" (String -> JS_IO ())
 
-writeState : (state : BattleState) -> {w : Writable state} -> JS_IO ()
-writeState Dead = writeStateStr "DEAD"
-writeState Won = writeStateStr "WON"
-writeState Safe = writeStateStr "SAFE"
-writeState (NotDead health enemy) =
+writeState : Writable state -> JS_IO ()
+writeState w {state = Dead} = writeStateStr "DEAD"
+writeState w {state = Won} = writeStateStr "WON"
+writeState w {state = Safe} = writeStateStr "SAFE"
+writeState w {state = (NotDead health enemy)} =
   do writeStateStr "NOTDEAD"
-     foreign FFI_JS "window.badboy.health = %0" (Int -> JS_IO()) (toIntNat health)
-     foreign FFI_JS "window.badboy.enemy = %0" (Int -> JS_IO()) (toIntNat enemy)
+     foreign FFI_JS "helpers.writeHealth(%0)" (Int -> JS_IO()) (toIntNat health)
+     foreign FFI_JS "helpers.writeEnemy(%0)" (Int -> JS_IO()) (toIntNat enemy)
 
 partial onClick : String -> JS_IO () -> JS_IO ()
 onClick selector callback =
   foreign FFI_JS 
-    "document.querySelector(%0).addEventListener('click', %1)"
+    "onClick(%0, %1)"
     (String -> JsFn (() -> JS_IO ()) -> JS_IO ())
     selector (MkJsFn (\_ => callback))
     
 partial onInit : JS_IO () -> JS_IO ()
 onInit callback =
   foreign FFI_JS
-    "document.addEventListener('init', %0)"
+    "onInit(%0)"
     ((JsFn (() -> JS_IO ())) -> JS_IO ())
     (MkJsFn (\_ => callback))
     
 -- THIS IS HORRRRIBLE
 enemyResponse : JS_IO EnemyResponse
 enemyResponse = 
-  do i <- foreign FFI_JS "Math.floor((Math.random() * 3) + 1)" (JS_IO Int)
+  do i <- foreign FFI_JS "enemyResponse()" (JS_IO Int)
      case i of
        1 => pure Punch
        2 => pure Magic
        _ => pure Kick
        
+showStatus : Writable state -> JS_IO ()
+showStatus w = 
+  foreign FFI_JS 
+    "showStatus(%0)"
+    (String -> JS_IO ())
+    (show w)
+       
+log : String -> JS_IO ()
+log = foreign FFI_JS "log(%0)" (String -> JS_IO ())
 --------------------------------------------------------------------------------
           
 runCmd : BattleCmd () Ready (const Done) -> JS_IO ()
 runCmd = runCmd'
   where
     runCmd' : BattleCmd ty inState outState -> JS_IO ty
-    runCmd' Start = log "starting..."
-    runCmd' Die = log "you died :("
-    runCmd' Win = log "game won!"
+    runCmd' Start = pure ()
+    runCmd' Die = pure ()
+    runCmd' Win = pure ()
     
     runCmd' Punch = enemyResponse
-    runCmd' Kick = do log "kicking"
-                      enemyResponse
+    runCmd' Kick = enemyResponse
     runCmd' Magic = enemyResponse
     
-    runCmd' ReadState = do log "reading..."
-                           readState
-    runCmd' (WriteState w) {inState} = do log "writing..."
-                                          writeState inState {w}
-    runCmd' GiveUp = log "something went wrong reading the state"
-    runCmd' (ShowStatus w) =
-      foreign FFI_JS 
-        "document.querySelector('#status').innerHTML = %0"
-        (String -> JS_IO ())
-        (show w)
-    runCmd' (Log msg) = foreign FFI_JS "log(%0)" (String -> JS_IO ()) msg
+    runCmd' ReadState = readState
+    runCmd' (WriteState w) = writeState w
+    runCmd' GiveUp = putStrLn' "something went wrong reading the state"
+    runCmd' (ShowStatus w) = showStatus w
+    runCmd' (Log msg) = log msg
     runCmd' (Pure res) = pure res
     runCmd' (x >>= f) = do x' <- runCmd' x
                            runCmd' (f x')
